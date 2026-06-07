@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>SortScape v1.2 – умный анализ файлов</title>
+  <link rel="manifest" href="data:application/manifest+json,{"name":"SortScape","short_name":"SortScape","start_url":".","display":"standalone","background_color":"#0a0a0f","theme_color":"#7c3aed"}">
+  <!-- Tesseract.js + SheetJS + jsQR -->
+  <script src="https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: radial-gradient(circle at 20% 30%, #0c0c1a, #020207);
+      font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      min-height: 100vh;
+      padding: 1.5rem;
+      color: #f0f3ff;
+    }
+    /* glassmorphism */
+    .glass {
+      background: rgba(18, 18, 32, 0.7);
+      backdrop-filter: blur(14px);
+      border-radius: 2rem;
+      border: 1px solid rgba(124, 58, 237, 0.4);
+      box-shadow: 0 25px 40px -12px rgba(0,0,0,0.5), 0 0 0 1px rgba(124,58,237,0.1) inset;
+    }
+    .container { max-width: 1500px; margin: 0 auto; }
+    .hero {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 2rem;
+      padding: 1rem 2rem;
+    }
+    .logo h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #e0c3fc, #8b5cf6, #c084fc);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      letter-spacing: -0.02em;
+    }
+    .badge {
+      background: #1e1b3a;
+      padding: 0.4rem 1rem;
+      border-radius: 2rem;
+      font-size: 0.7rem;
+      font-weight: 500;
+      border: 1px solid #6d28d9;
+    }
+    .upload-area {
+      padding: 1rem;
+      text-align: center;
+      cursor: pointer;
+      margin-bottom: 2rem;
+      transition: all 0.2s;
+    }
+    .upload-area:hover { background: rgba(124,58,237,0.2); }
+    .upload-icon { font-size: 2.5rem; margin-bottom: 0.2rem; }
+    .upload-area input { display: none; }
+    .btn {
+      background: linear-gradient(95deg, #7c3aed, #a855f7);
+      border: none;
+      padding: 0.5rem 1.2rem;
+      border-radius: 2.5rem;
+      font-weight: 600;
+      color: white;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 0.85rem;
+      margin: 0.3rem;
+      box-shadow: 0 4px 12px rgba(124,58,237,0.3);
+    }
+    .btn-small { padding: 0.3rem 0.9rem; font-size: 0.75rem; }
+    .btn-obsidian { background: linear-gradient(95deg, #2e7d32, #4caf50); }
+    .btn-telegram { background: linear-gradient(95deg, #1e88e5, #43a5f5); }
+    .btn-danger { background: linear-gradient(95deg, #b91c1c, #ef4444); }
+    .btn:hover { transform: translateY(-2px); filter: brightness(1.05); }
+    .grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr 1.3fr;
+      gap: 1.5rem;
+    }
+    @media (max-width: 1000px) { .grid-3 { grid-template-columns: 1fr; gap: 1rem; } }
+    .card {
+      background: rgba(12,12,22,0.65);
+      backdrop-filter: blur(12px);
+      border-radius: 1.8rem;
+      padding: 1.2rem;
+      border: 1px solid rgba(124,58,237,0.3);
+      display: flex;
+      flex-direction: column;
+    }
+    .card h3 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      border-bottom: 1px solid #2d2a50;
+      padding-bottom: 0.6rem;
+    }
+    /* файлы */
+    .file-list { max-height: 550px; overflow-y: auto; }
+    .file-item {
+      background: #13112a;
+      margin-bottom: 0.5rem;
+      padding: 0.5rem 0.8rem;
+      border-radius: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.75rem;
+      border-left: 3px solid #7c3aed;
+      cursor: pointer;
+      transition: 0.1s;
+      word-break: break-word;
+    }
+    .file-item:hover { background: #201e3a; transform: translateX(4px); }
+    .file-item.active { background: #2d2a5a; border-left-color: #f59e0b; }
+    .file-thumb {
+      width: 40px;
+      height: 40px;
+      object-fit: cover;
+      border-radius: 8px;
+      background: #0a0a12;
+    }
+    /* превью (миниатюры) */
+    .preview-grid {
+      display: flex;
+      gap: 0.8rem;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+    .thumbnail {
+      width: 90px;
+      height: 90px;
+      object-fit: cover;
+      border-radius: 12px;
+      cursor: pointer;
+      border: 1px solid #6b21a5;
+      transition: 0.1s;
+    }
+    .thumbnail:hover { transform: scale(1.05); border-color: #c084fc; }
+    /* карточки результатов */
+    .result-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 0.8rem;
+      max-height: 500px;
+      overflow-y: auto;
+    }
+    .info-card {
+      background: rgba(0,0,0,0.4);
+      border-radius: 1.2rem;
+      padding: 0.8rem;
+      border-left: 4px solid;
+    }
+    .info-card h4 { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.4rem; display: flex; align-items: center; gap: 0.4rem; }
+    .info-card p { font-size: 0.85rem; word-break: break-word; font-family: monospace; background: #06060c; padding: 0.4rem; border-radius: 0.6rem; margin-top: 0.2rem; }
+    .text-block { background: #0a0a14; padding: 0.6rem; border-radius: 1rem; font-size: 0.7rem; white-space: pre-wrap; font-family: monospace; max-height: 200px; overflow: auto; }
+    .log-area { background: #0c0c16; border-radius: 1rem; padding: 0.5rem; font-family: monospace; font-size: 0.7rem; max-height: 140px; overflow-y: auto; margin-top: 1rem; }
+    .flex-btns { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: center; margin: 0.8rem 0 0.4rem; }
+    .progress-bar { width: 100%; background: #2d2a5a; border-radius: 20px; overflow: hidden; margin: 8px 0; }
+    .progress-fill { height: 18px; background: linear-gradient(90deg, #a855f7, #7c3aed); width: 0%; transition: width 0.2s; }
+    .toast {
+      position: fixed; bottom: 20px; right: 20px; background: #2e7d32; color: white; padding: 10px 20px;
+      border-radius: 40px; font-size: 0.8rem; z-index: 2000; animation: fadeOut 2.5s forwards;
+    }
+    @keyframes fadeOut { 0% { opacity: 1; transform: translateY(0); } 80% { opacity: 1; } 100% { opacity: 0; visibility: hidden; } }
+    footer { text-align: center; margin-top: 1.5rem; font-size: 0.65rem; opacity: 0.6; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="hero glass">
+    <div class="logo"><h1>✨ SortScape v1.2</h1><p>извлечение данных + экспорт в Obsidian / Telegram / Excel</p></div>
+    <div class="badge">📁 папки | 🧠 OCR | 🎯 категории | 📎 экспорт</div>
+  </div>
+
+  <div class="upload-area glass" id="uploadZone">
+    <div class="upload-icon">📂</div>
+    <p>Выберите папку с файлами (скриншоты, документы, видео, аудио)</p>
+    <input type="file" id="folderInput" webkitdirectory directory multiple>
+    <div><button class="btn" id="selectFolderBtn">📁 Выбрать папку</button></div>
+  </div>
+
+  <div class="grid-3">
+    <!-- колонка 1: список файлов -->
+    <div class="card">
+      <h3>📄 Файлы <span id="fileCount" style="font-size:0.9rem;">(0)</span></h3>
+      <div id="fileListContainer" class="file-list"><div style="padding:1rem;">Папка не выбрана</div></div>
+      <div class="flex-btns"><button id="sortBtn" class="btn btn-small">🏷️ Сортировка по типам</button></div>
+    </div>
+
+    <!-- колонка 2: превью + извлечение -->
+    <div class="card">
+      <h3>🔍 Предпросмотр / Извлечь данные</h3>
+      <div id="previewContainer" style="min-height: 250px;">⬅️ Кликните на файл слева</div>
+      <div class="flex-btns" id="extractBtnHolder" style="display:none;">
+        <button id="extractSingleBtn" class="btn">🧠 Извлечь данные из файла</button>
+      </div>
+      <div id="singleExtractResult" class="result-cards" style="margin-top: 0.8rem;"></div>
+    </div>
+
+    <!-- колонка 3: массовые операции + экспорт -->
+    <div class="card">
+      <h3>📊 Массовый анализ и экспорт</h3>
+      <div class="flex-btns">
+        <button id="extractAllExcelBtn" class="btn btn-small">📎 Все скрины → Excel</button>
+        <button id="extractAllObsidianBtn" class="btn btn-small btn-obsidian">📚 Все скрины → Obsidian (.md)</button>
+        <button id="extractAllTelegramBtn" class="btn btn-small btn-telegram">📋 Сводка в Telegram</button>
+      </div>
+      <div id="bulkProgress" style="display:none;">
+        <div class="progress-bar"><div id="bulkFill" class="progress-fill"></div></div>
+        <button id="stopBulkBtn" class="btn btn-small btn-danger">⏹️ Остановить</button>
+      </div>
+      <div id="processingLog" class="log-area">💡 Статус: выберите папку</div>
+    </div>
+  </div>
+  <footer>🔒 Всё локально, файлы не покидают браузер. После экспорта файл сохранится в папку «Загрузки».</footer>
+</div>
+
+<script>
+  (function(){
+    let allFiles = [];
+    let currentFile = null;
+    let currentExtracted = null;
+    let currentPreviewUrl = null;
+    let abortFlag = false;
+
+    // DOM
+    const folderInput = document.getElementById('folderInput');
+    const selectFolderBtn = document.getElementById('selectFolderBtn');
+    const fileListDiv = document.getElementById('fileListContainer');
+    const previewDiv = document.getElementById('previewContainer');
+    const singleResultDiv = document.getElementById('singleExtractResult');
+    const extractBtnHolder = document.getElementById('extractBtnHolder');
+    const sortBtn = document.getElementById('sortBtn');
+    const extractAllExcel = document.getElementById('extractAllExcelBtn');
+    const extractAllObsidian = document.getElementById('extractAllObsidianBtn');
+    const extractAllTelegram = document.getElementById('extractAllTelegramBtn');
+    const bulkProgressDiv = document.getElementById('bulkProgress');
+    const bulkFill = document.getElementById('bulkFill');
+    const stopBulk = document.getElementById('stopBulkBtn');
+    const logDiv = document.getElementById('processingLog');
+
+    function log(msg, isErr=false){
+      const p = document.createElement('div');
+      p.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      p.style.color = isErr ? '#ffaa99' : '#b1e5d9';
+      logDiv.appendChild(p);
+      p.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function showToast(msg){
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.innerText = msg;
+      document.body.appendChild(toast);
+      setTimeout(()=>toast.remove(), 2500);
+    }
+
+    // сбор файлов
+    function collect(fileList){
+      const arr = [];
+      for(let i=0; i<fileList.length; i++){
+        const f = fileList[i];
+        let relPath = f.webkitRelativePath || f.name;
+        let parts = relPath.split('/');
+        let name = parts.pop();
+        let dir = parts.join('/');
+        let ext = name.split('.').pop().toLowerCase();
+        arr.push({
+          name, path: relPath, dir, size: f.size, type: f.type,
+          lastModified: f.lastModified, ext, fileObj: f
+        });
+      }
+      return arr;
+    }
+
+    function renderFileList(){
+      document.getElementById('fileCount').innerText = `(${allFiles.length})`;
+      if(!allFiles.length){
+        fileListDiv.innerHTML = '<div style="padding:1rem;">Нет файлов</div>';
+        return;
+      }
+      let html = '';
+      allFiles.forEach((f, idx)=>{
+        const active = (currentFile && currentFile.path === f.path) ? 'active' : '';
+        html += `<div class="file-item ${active}" data-idx="${idx}">
+          <span>📄 ${f.path.length>55 ? '…'+f.path.slice(-52) : f.path}</span>
+          <span style="font-size:0.65rem; background:#2d2a55; padding:0.1rem 0.5rem; border-radius:1rem;">${f.ext}</span>
+        </div>`;
+      });
+      fileListDiv.innerHTML = html;
+      document.querySelectorAll('.file-item').forEach(el=>{
+        el.addEventListener('click', (e)=>{
+          const idx = parseInt(el.dataset.idx);
+          if(!isNaN(idx)) selectFile(allFiles[idx]);
+        });
+      });
+    }
+
+    // освободить URL
+    function revokePreview(){
+      if(currentPreviewUrl) { URL.revokeObjectURL(currentPreviewUrl); currentPreviewUrl=null; }
+    }
+
+    async function selectFile(file){
+      revokePreview();
+      currentFile = file;
+      renderFileList();
+      extractBtnHolder.style.display = 'block';
+      singleResultDiv.innerHTML = '';
+      // создаём миниатюру если картинка
+      let previewHtml = `<div class="meta-info" style="background:#0c0c1a; padding:0.6rem; border-radius:1rem; margin-bottom:0.8rem;">
+        <strong>${file.name}</strong><br>📁 ${file.path}<br>📦 ${(file.size/1024).toFixed(1)} KB</div>`;
+      if(file.type.startsWith('image/')){
+        const thumbUrl = URL.createObjectURL(file.fileObj);
+        currentPreviewUrl = thumbUrl;
+        previewHtml += `<div class="preview-grid"><img src="${thumbUrl}" class="thumbnail" onclick="window.open('${thumbUrl}')" /></div>`;
+      } else if(file.type.startsWith('video/')){
+        const vidUrl = URL.createObjectURL(file.fileObj);
+        currentPreviewUrl = vidUrl;
+        previewHtml += `<video controls src="${vidUrl}" style="max-width:100%; max-height:140px; border-radius:1rem;"></video>`;
+      } else if(file.type.startsWith('audio/')){
+        const audUrl = URL.createObjectURL(file.fileObj);
+        currentPreviewUrl = audUrl;
+        previewHtml += `<audio controls src="${audUrl}" style="width:100%;"></audio>`;
+      } else {
+        previewHtml += `<div>⚠️ Предпросмотр недоступен</div>`;
+      }
+      previewDiv.innerHTML = previewHtml;
+      // кнопка извлечения
+      const btn = document.getElementById('extractSingleBtn');
+      btn.onclick = async ()=>{
+        singleResultDiv.innerHTML = '<div style="padding:1rem;">⏳ Извлечение данных...</div>';
+        try {
+          const data = await extractFromFile(file);
+          currentExtracted = data;
+          displayExtractedCards(data, singleResultDiv);
+          log(`✅ Данные извлечены из ${file.name}`);
+        } catch(e){ log(`Ошибка: ${e.message}`, true); singleResultDiv.innerHTML = `<div style="color:#f99;">Ошибка: ${e.message}</div>`; }
+      };
+    }
+
+    // ОСНОВНАЯ ФУНКЦИЯ ИЗВЛЕЧЕНИЯ (OCR)
+    async function extractFromFile(file){
+      let result = { имя: file.path };
+      try {
+        if(file.type.startsWith('image/')){
+          const ocrData = await performOCR(file.fileObj, file.path);
+          result = { ...result, ...ocrData };
+        } else if(file.type.startsWith('video/') || file.type.startsWith('audio/')){
+          const meta = await getMediaMeta(file.fileObj, file.type);
+          result = { ...result, ...meta };
+        } else if(file.ext === 'txt' || file.type === 'text/plain'){
+          const text = await file.fileObj.text();
+          const extracted = extractPatterns(text);
+          result = { ...result, ...extracted, rawText: text.substring(0,800) };
+        } else {
+          result.примечание = "Только базовая информация";
+        }
+        result.путь = file.path;
+        return result;
+      } catch(e) { throw e; }
+    }
+
+    async function performOCR(fileObj, filename){
+      let worker = null;
+      try {
+        worker = await Tesseract.createWorker();
+        await worker.loadLanguage('rus+eng');
+        await worker.initialize('rus+eng');
+        const { data: { text } } = await worker.recognize(fileObj);
+        await worker.terminate();
+        // QR код
+        let qr = null;
+        const img = new Image();
+        await new Promise((resolve) => { img.onload = resolve; img.src = URL.createObjectURL(fileObj); });
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width; canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        const code = jsQR(ctx.getImageData(0,0,img.width,img.height).data, img.width, img.height);
+        if(code) qr = code.data;
+        URL.revokeObjectURL(img.src);
+        const patterns = extractPatterns(text);
+        if(qr) patterns.QR_код = qr;
+        patterns.распознанный_текст = text.substring(0, 1200);
+        return patterns;
+      } catch(err){
+        if(worker) await worker.terminate();
+        throw new Error(`OCR ошибка: ${err.message}`);
+      }
+    }
+
+    function extractPatterns(text){
+      const res = {};
+      const orderMatch = text.match(/(?:заказ|счет|invoice|order|№)\s*[#: ]*([A-Z0-9]{4,20})/i);
+      if(orderMatch) res.номер_заказа = orderMatch[1];
+      const sumMatch = text.match(/(\d{1,3}(?:[\s,]?\d{3})*(?:\.\d{2})?)\s?(?:руб|₽|RUB|USD|EUR|\$|€)/i);
+      if(sumMatch) res.сумма = sumMatch[1];
+      const dateMatch = text.match(/(\d{2}[./-]\d{2}[./-]\d{4})|(\d{4}[./-]\d{2}[./-]\d{2})/);
+      if(dateMatch) res.дата = dateMatch[0];
+      const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+      if(emailMatch) res.email = emailMatch[0];
+      const phoneMatch = text.match(/(\+7|8)?[\s-]?\(?[0-9]{3}\)?[\s-]?[0-9]{3}[\s-]?[0-9]{2}[\s-]?[0-9]{2}/);
+      if(phoneMatch) res.телефон = phoneMatch[0];
+      return res;
+    }
+
+    function getMediaMeta(fileObj, mime){
+      return new Promise((resolve)=>{
+        const el = document.createElement(mime.startsWith('video/')?'video':'audio');
+        const url = URL.createObjectURL(fileObj);
+        el.src = url;
+        el.onloadedmetadata = ()=>{
+          const data = { длительность_сек: el.duration.toFixed(2) };
+          if(el.videoWidth) data.разрешение = `${el.videoWidth}x${el.videoHeight}`;
+          URL.revokeObjectURL(url);
+          resolve(data);
+        };
+        el.onerror = ()=>{ URL.revokeObjectURL(url); resolve({}); };
+      });
+    }
+
+    function displayExtractedCards(data, container){
+      const categories = [
+        { title: '🧾 Номер заказа/счета', key: 'номер_заказа', icon: '#' },
+        { title: '💰 Сумма', key: 'сумма', icon: '₽' },
+        { title: '📅 Дата', key: 'дата', icon: '📅' },
+        { title: '✉️ Email', key: 'email', icon: '@' },
+        { title: '📞 Телефон', key: 'телефон', icon: '📞' },
+        { title: '📲 QR-код', key: 'QR_код', icon: '🔲' }
+      ];
+      let html = '';
+      for(let cat of categories){
+        if(data[cat.key]){
+          html += `<div class="info-card" style="border-left-color:#c084fc;">
+            <h4>${cat.icon} ${cat.title}</h4>
+            <p>${data[cat.key]}</p>
+          </div>`;
+        }
+      }
+      if(data.распознанный_текст){
+        html += `<div class="info-card" style="border-left-color:#f59e0b;">
+          <h4>📝 Распознанный текст (фрагмент)</h4>
+          <div class="text-block">${escapeHtml(data.распознанный_текст)}</div>
+        </div>`;
+      }
+      if(!html) html = '<div style="padding:0.8rem;">❌ Ничего не найдено</div>';
+      container.innerHTML = html;
+      // добавим кнопки экспорта для одного файла
+      const exportDiv = document.createElement('div');
+      exportDiv.className = 'flex-btns';
+      exportDiv.style.marginTop = '12px';
+      exportDiv.innerHTML = `
+        <button id="exportOneObsidian" class="btn btn-small btn-obsidian">📝 Obsidian (.md)</button>
+        <button id="exportOneTelegram" class="btn btn-small btn-telegram">📋 Telegram</button>
+      `;
+      container.appendChild(exportDiv);
+      document.getElementById('exportOneObsidian')?.addEventListener('click', ()=>{
+        exportSingleToObsidian(data);
+        showToast('✅ Obsidian-файл сохранён в папку Загрузки');
+      });
+      document.getElementById('exportOneTelegram')?.addEventListener('click', ()=>{
+        copySingleToTelegram(data);
+        showToast('📋 Данные скопированы в буфер для Telegram');
+      });
+    }
+
+    function exportSingleToObsidian(data){
+      const title = (data.путь || 'data').replace(/[\\/:*?"<>|]/g,'_');
+      const md = `---
+title: ${title}
+date: ${new Date().toISOString()}
+tags: [sortscape, extracted]
+---
+# Извлечённые данные из: ${data.путь}
+${Object.entries(data).map(([k,v])=> `- **${k}**: ${v}`).join('\n')}
+`;
+      downloadFile(md, `obsidian_${title}.md`, 'text/markdown');
+    }
+
+    function copySingleToTelegram(data){
+      let msg = `📄 *Файл:* ${data.путь}\n`;
+      for(let [k,v] of Object.entries(data)){
+        if(k !== 'путь' && k !== 'распознанный_текст') msg += `• *${k}:* ${v}\n`;
+      }
+      if(data.распознанный_текст) msg += `\n📝 Текст:\`\`\`${data.распознанный_текст.substring(0,500)}\`\`\``;
+      navigator.clipboard.writeText(msg);
+      showToast('Скопировано в буфер для Telegram');
+    }
+
+    // ---------- МАССОВЫЙ OCR ----------
+    async function runBulk(processName, onComplete){
+      const images = allFiles.filter(f => ['jpg','jpeg','png','gif','bmp','webp'].includes(f.ext));
+      if(!images.length){ log('Нет изображений', true); return; }
+      abortFlag = false;
+      bulkProgressDiv.style.display = 'block';
+      bulkFill.style.width = '0%';
+      let results = [];
+      for(let i=0; i<images.length && !abortFlag; i++){
+        const percent = (i/images.length)*100;
+        bulkFill.style.width = `${percent}%`;
+        log(`Обработка ${i+1}/${images.length}: ${images[i].name}`);
+        try {
+          const data = await performOCR(images[i].fileObj, images[i].path);
+          data.путь = images[i].path;
+          results.push(data);
+        } catch(e){ log(`Ошибка ${images[i].name}: ${e.message}`, true); }
+        await new Promise(r => setTimeout(r, 20));
+      }
+      bulkProgressDiv.style.display = 'none';
+      if(abortFlag) log('Массовый анализ остановлен');
+      onComplete(results);
+    }
+
+    function exportAllExcel(results){
+      if(!results.length) return;
+      const wsData = [['Путь','Номер','Сумма','Дата','Email','Телефон','QR','Текст']];
+      results.forEach(r=>{
+        wsData.push([
+          r.путь || '', r.номер_заказа || '', r.сумма || '', r.дата || '',
+          r.email || '', r.телефон || '', r.QR_код || '', (r.распознанный_текст||'').substring(0,300)
+        ]);
+      });
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+      XLSX.utils.book_append_sheet(wb, ws, 'Скриншоты');
+      XLSX.writeFile(wb, `sortscape_${Date.now()}.xlsx`);
+      showToast('Excel файл сохранён в Загрузки');
+    }
+
+    function exportAllObsidian(results){
+      let md = `# Массовое извлечение (${results.length} скриншотов)\n\n`;
+      results.forEach((r,idx)=>{
+        md += `## ${idx+1}. ${r.путь}\n`;
+        for(let [k,v] of Object.entries(r)){
+          if(k !== 'распознанный_текст') md += `- **${k}**: ${v}\n`;
+        }
+        if(r.распознанный_текст) md += `\n**Текст:**\n\`\`\`\n${r.распознанный_текст.substring(0,400)}\n\`\`\`\n`;
+        md += '\n---\n';
+      });
+      downloadFile(md, `obsidian_bulk_${Date.now()}.md`, 'text/markdown');
+      showToast('MD файл для Obsidian сохранён');
+    }
+
+    function exportAllTelegram(results){
+      let msg = `📸 *Сводка ${results.length} скриншотов*\n\n`;
+      results.forEach((r,i)=>{
+        msg += `${i+1}. ${r.путь}\n`;
+        if(r.номер_заказа) msg += `   🧾 Номер: ${r.номер_заказа}\n`;
+        if(r.сумма) msg += `   💰 Сумма: ${r.сумма}\n`;
+        if(r.дата) msg += `   📅 Дата: ${r.дата}\n`;
+        if(r.email) msg += `   ✉️ Email: ${r.email}\n`;
+        if(r.телефон) msg += `   📞 Телефон: ${r.телефон}\n`;
+        if(r.QR_код) msg += `   📲 QR: ${r.QR_код}\n`;
+        msg += '\n';
+      });
+      navigator.clipboard.writeText(msg);
+      showToast('Сводка скопирована для Telegram');
+    }
+
+    function downloadFile(content, filename, mime){
+      const blob = new Blob([content], {type: mime});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    function escapeHtml(str){ return str.replace(/[&<>]/g, function(m){ if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
+
+    // сортировка по типам
+    function showSort(){
+      if(!allFiles.length) return;
+      const groups = new Map();
+      for(let f of allFiles){
+        let cat = '📄 Документы';
+        if(['jpg','jpeg','png','gif','webp'].includes(f.ext)) cat = '🖼️ Изображения';
+        else if(['mp4','mkv','avi','mov'].includes(f.ext)) cat = '🎬 Видео';
+        else if(['mp3','wav','flac'].includes(f.ext)) cat = '🎵 Аудио';
+        if(!groups.has(cat)) groups.set(cat, []);
+        groups.get(cat).push(f.path);
+      }
+      let html = '';
+      for(let [cat, items] of groups){
+        html += `<div class="result-group"><h4>${cat}</h4><ul>${items.slice(0,30).map(i=>`<li style="font-size:0.7rem;">${i}</li>`).join('')}</ul></div>`;
+      }
+      singleResultDiv.innerHTML = html;
+    }
+
+    // обработчики
+    selectFolderBtn.onclick = ()=>folderInput.click();
+    folderInput.onchange = (e)=>{
+      if(!e.target.files.length) return;
+      revokePreview();
+      log(`Папка загружена, файлов: ${e.target.files.length}`);
+      allFiles = collect(e.target.files);
+      currentFile = null;
+      renderFileList();
+      previewDiv.innerHTML = '⬅️ Кликните на файл';
+      singleResultDiv.innerHTML = '';
+      extractBtnHolder.style.display = 'none';
+    };
+    sortBtn.onclick = showSort;
+    extractAllExcel.onclick = ()=>runBulk('excel', exportAllExcel);
+    extractAllObsidian.onclick = ()=>runBulk('obsidian', exportAllObsidian);
+    extractAllTelegram.onclick = ()=>runBulk('telegram', exportAllTelegram);
+    stopBulk.onclick = ()=>{ abortFlag = true; log('Остановка по запросу'); };
+  })();
+</script>
+</body>
+</html>

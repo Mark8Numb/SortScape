@@ -3,9 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>SortScape v1.2 – умный анализ файлов</title>
+  <title>SortScape v1.3 – сортировка + массовое извлечение в MD</title>
   <link rel="manifest" href="data:application/manifest+json,{"name":"SortScape","short_name":"SortScape","start_url":".","display":"standalone","background_color":"#0a0a0f","theme_color":"#7c3aed"}">
-  <!-- Tesseract.js + SheetJS + jsQR -->
   <script src="https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
@@ -18,7 +17,6 @@
       padding: 1.5rem;
       color: #f0f3ff;
     }
-    /* glassmorphism */
     .glass {
       background: rgba(18, 18, 32, 0.7);
       backdrop-filter: blur(14px);
@@ -105,7 +103,6 @@
       border-bottom: 1px solid #2d2a50;
       padding-bottom: 0.6rem;
     }
-    /* файлы */
     .file-list { max-height: 550px; overflow-y: auto; }
     .file-item {
       background: #13112a;
@@ -123,31 +120,15 @@
     }
     .file-item:hover { background: #201e3a; transform: translateX(4px); }
     .file-item.active { background: #2d2a5a; border-left-color: #f59e0b; }
-    .file-thumb {
-      width: 40px;
-      height: 40px;
-      object-fit: cover;
-      border-radius: 8px;
-      background: #0a0a12;
-    }
-    /* превью (миниатюры) */
-    .preview-grid {
-      display: flex;
-      gap: 0.8rem;
-      flex-wrap: wrap;
-      margin-bottom: 1rem;
-    }
     .thumbnail {
-      width: 90px;
-      height: 90px;
+      width: 80px;
+      height: 80px;
       object-fit: cover;
-      border-radius: 12px;
+      border-radius: 10px;
       cursor: pointer;
       border: 1px solid #6b21a5;
-      transition: 0.1s;
     }
-    .thumbnail:hover { transform: scale(1.05); border-color: #c084fc; }
-    /* карточки результатов */
+    .preview-area { min-height: 200px; }
     .result-cards {
       display: flex;
       flex-direction: column;
@@ -161,9 +142,9 @@
       padding: 0.8rem;
       border-left: 4px solid;
     }
-    .info-card h4 { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.4rem; display: flex; align-items: center; gap: 0.4rem; }
-    .info-card p { font-size: 0.85rem; word-break: break-word; font-family: monospace; background: #06060c; padding: 0.4rem; border-radius: 0.6rem; margin-top: 0.2rem; }
-    .text-block { background: #0a0a14; padding: 0.6rem; border-radius: 1rem; font-size: 0.7rem; white-space: pre-wrap; font-family: monospace; max-height: 200px; overflow: auto; }
+    .info-card h4 { font-size: 0.8rem; font-weight: 600; margin-bottom: 0.4rem; display: flex; align-items: center; gap: 0.4rem; }
+    .info-card p { font-size: 0.85rem; word-break: break-word; background: #06060c; padding: 0.4rem; border-radius: 0.6rem; margin-top: 0.2rem; }
+    .text-block { background: #0a0a14; padding: 0.6rem; border-radius: 1rem; font-size: 0.7rem; white-space: pre-wrap; font-family: monospace; max-height: 150px; overflow: auto; }
     .log-area { background: #0c0c16; border-radius: 1rem; padding: 0.5rem; font-family: monospace; font-size: 0.7rem; max-height: 140px; overflow-y: auto; margin-top: 1rem; }
     .flex-btns { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: center; margin: 0.8rem 0 0.4rem; }
     .progress-bar { width: 100%; background: #2d2a5a; border-radius: 20px; overflow: hidden; margin: 8px 0; }
@@ -179,13 +160,13 @@
 <body>
 <div class="container">
   <div class="hero glass">
-    <div class="logo"><h1>✨ SortScape v1.2</h1><p>извлечение данных + экспорт в Obsidian / Telegram / Excel</p></div>
-    <div class="badge">📁 папки | 🧠 OCR | 🎯 категории | 📎 экспорт</div>
+    <div class="logo"><h1>✨ SortScape v1.3</h1><p>сортировка + массовое извлечение в MD</p></div>
+    <div class="badge">📁 папки | 🧠 OCR | 🏷️ сортировка | 📚 MD-экспорт</div>
   </div>
 
   <div class="upload-area glass" id="uploadZone">
     <div class="upload-icon">📂</div>
-    <p>Выберите папку с файлами (скриншоты, документы, видео, аудио)</p>
+    <p>Выберите папку с любыми файлами</p>
     <input type="file" id="folderInput" webkitdirectory directory multiple>
     <div><button class="btn" id="selectFolderBtn">📁 Выбрать папку</button></div>
   </div>
@@ -195,26 +176,27 @@
     <div class="card">
       <h3>📄 Файлы <span id="fileCount" style="font-size:0.9rem;">(0)</span></h3>
       <div id="fileListContainer" class="file-list"><div style="padding:1rem;">Папка не выбрана</div></div>
-      <div class="flex-btns"><button id="sortBtn" class="btn btn-small">🏷️ Сортировка по типам</button></div>
+      <div class="flex-btns">
+        <button id="sortBtn" class="btn btn-small">🏷️ Сортировать по типам</button>
+        <button id="extractAllMdBtn" class="btn btn-small btn-obsidian">📚 Извлечь из всех файлов → MD</button>
+      </div>
     </div>
 
-    <!-- колонка 2: превью + извлечение -->
+    <!-- колонка 2: превью + извлечение одного файла -->
     <div class="card">
       <h3>🔍 Предпросмотр / Извлечь данные</h3>
-      <div id="previewContainer" style="min-height: 250px;">⬅️ Кликните на файл слева</div>
+      <div id="previewContainer" class="preview-area">⬅️ Кликните на файл слева</div>
       <div class="flex-btns" id="extractBtnHolder" style="display:none;">
-        <button id="extractSingleBtn" class="btn">🧠 Извлечь данные из файла</button>
+        <button id="extractSingleBtn" class="btn btn-small">🧠 Извлечь данные из этого файла</button>
       </div>
       <div id="singleExtractResult" class="result-cards" style="margin-top: 0.8rem;"></div>
     </div>
 
-    <!-- колонка 3: массовые операции + экспорт -->
+    <!-- колонка 3: результаты сортировки/массового извлечения -->
     <div class="card">
-      <h3>📊 Массовый анализ и экспорт</h3>
-      <div class="flex-btns">
-        <button id="extractAllExcelBtn" class="btn btn-small">📎 Все скрины → Excel</button>
-        <button id="extractAllObsidianBtn" class="btn btn-small btn-obsidian">📚 Все скрины → Obsidian (.md)</button>
-        <button id="extractAllTelegramBtn" class="btn btn-small btn-telegram">📋 Сводка в Telegram</button>
+      <h3>📊 Результаты</h3>
+      <div id="resultContainer" class="result-cards" style="max-height: 500px; overflow-y: auto;">
+        <div style="padding:1rem;">Здесь появится сортировка или массовое извлечение</div>
       </div>
       <div id="bulkProgress" style="display:none;">
         <div class="progress-bar"><div id="bulkFill" class="progress-fill"></div></div>
@@ -242,9 +224,8 @@
     const singleResultDiv = document.getElementById('singleExtractResult');
     const extractBtnHolder = document.getElementById('extractBtnHolder');
     const sortBtn = document.getElementById('sortBtn');
-    const extractAllExcel = document.getElementById('extractAllExcelBtn');
-    const extractAllObsidian = document.getElementById('extractAllObsidianBtn');
-    const extractAllTelegram = document.getElementById('extractAllTelegramBtn');
+    const extractAllMdBtn = document.getElementById('extractAllMdBtn');
+    const resultContainer = document.getElementById('resultContainer');
     const bulkProgressDiv = document.getElementById('bulkProgress');
     const bulkFill = document.getElementById('bulkFill');
     const stopBulk = document.getElementById('stopBulkBtn');
@@ -266,7 +247,6 @@
       setTimeout(()=>toast.remove(), 2500);
     }
 
-    // сбор файлов
     function collect(fileList){
       const arr = [];
       for(let i=0; i<fileList.length; i++){
@@ -307,7 +287,6 @@
       });
     }
 
-    // освободить URL
     function revokePreview(){
       if(currentPreviewUrl) { URL.revokeObjectURL(currentPreviewUrl); currentPreviewUrl=null; }
     }
@@ -318,13 +297,12 @@
       renderFileList();
       extractBtnHolder.style.display = 'block';
       singleResultDiv.innerHTML = '';
-      // создаём миниатюру если картинка
-      let previewHtml = `<div class="meta-info" style="background:#0c0c1a; padding:0.6rem; border-radius:1rem; margin-bottom:0.8rem;">
+      let previewHtml = `<div style="background:#0c0c1a; padding:0.6rem; border-radius:1rem; margin-bottom:0.8rem;">
         <strong>${file.name}</strong><br>📁 ${file.path}<br>📦 ${(file.size/1024).toFixed(1)} KB</div>`;
       if(file.type.startsWith('image/')){
         const thumbUrl = URL.createObjectURL(file.fileObj);
         currentPreviewUrl = thumbUrl;
-        previewHtml += `<div class="preview-grid"><img src="${thumbUrl}" class="thumbnail" onclick="window.open('${thumbUrl}')" /></div>`;
+        previewHtml += `<div><img src="${thumbUrl}" class="thumbnail" onclick="window.open('${thumbUrl}')" /></div>`;
       } else if(file.type.startsWith('video/')){
         const vidUrl = URL.createObjectURL(file.fileObj);
         currentPreviewUrl = vidUrl;
@@ -337,20 +315,19 @@
         previewHtml += `<div>⚠️ Предпросмотр недоступен</div>`;
       }
       previewDiv.innerHTML = previewHtml;
-      // кнопка извлечения
       const btn = document.getElementById('extractSingleBtn');
       btn.onclick = async ()=>{
         singleResultDiv.innerHTML = '<div style="padding:1rem;">⏳ Извлечение данных...</div>';
         try {
           const data = await extractFromFile(file);
           currentExtracted = data;
-          displayExtractedCards(data, singleResultDiv);
+          displayExtractedCards(data, singleResultDiv, true);
           log(`✅ Данные извлечены из ${file.name}`);
         } catch(e){ log(`Ошибка: ${e.message}`, true); singleResultDiv.innerHTML = `<div style="color:#f99;">Ошибка: ${e.message}</div>`; }
       };
     }
 
-    // ОСНОВНАЯ ФУНКЦИЯ ИЗВЛЕЧЕНИЯ (OCR)
+    // УНИВЕРСАЛЬНОЕ ИЗВЛЕЧЕНИЕ ИЗ ЛЮБОГО ФАЙЛА
     async function extractFromFile(file){
       let result = { имя: file.path };
       try {
@@ -362,10 +339,12 @@
           result = { ...result, ...meta };
         } else if(file.ext === 'txt' || file.type === 'text/plain'){
           const text = await file.fileObj.text();
-          const extracted = extractPatterns(text);
-          result = { ...result, ...extracted, rawText: text.substring(0,800) };
+          const patterns = extractPatterns(text);
+          result = { ...result, ...patterns, rawText: text.substring(0,800) };
         } else {
           result.примечание = "Только базовая информация";
+          result.размер_KB = (file.size/1024).toFixed(1);
+          result.тип = file.type || 'неизвестно';
         }
         result.путь = file.path;
         return result;
@@ -380,7 +359,6 @@
         await worker.initialize('rus+eng');
         const { data: { text } } = await worker.recognize(fileObj);
         await worker.terminate();
-        // QR код
         let qr = null;
         const img = new Image();
         await new Promise((resolve) => { img.onload = resolve; img.src = URL.createObjectURL(fileObj); });
@@ -431,14 +409,16 @@
       });
     }
 
-    function displayExtractedCards(data, container){
+    function displayExtractedCards(data, container, addExportBtns=true){
       const categories = [
         { title: '🧾 Номер заказа/счета', key: 'номер_заказа', icon: '#' },
         { title: '💰 Сумма', key: 'сумма', icon: '₽' },
         { title: '📅 Дата', key: 'дата', icon: '📅' },
         { title: '✉️ Email', key: 'email', icon: '@' },
         { title: '📞 Телефон', key: 'телефон', icon: '📞' },
-        { title: '📲 QR-код', key: 'QR_код', icon: '🔲' }
+        { title: '📲 QR-код', key: 'QR_код', icon: '🔲' },
+        { title: '🎬 Видео/Аудио', key: 'длительность_сек', icon: '⏱️' },
+        { title: '📐 Разрешение', key: 'разрешение', icon: '📐' }
       ];
       let html = '';
       for(let cat of categories){
@@ -457,23 +437,24 @@
       }
       if(!html) html = '<div style="padding:0.8rem;">❌ Ничего не найдено</div>';
       container.innerHTML = html;
-      // добавим кнопки экспорта для одного файла
-      const exportDiv = document.createElement('div');
-      exportDiv.className = 'flex-btns';
-      exportDiv.style.marginTop = '12px';
-      exportDiv.innerHTML = `
-        <button id="exportOneObsidian" class="btn btn-small btn-obsidian">📝 Obsidian (.md)</button>
-        <button id="exportOneTelegram" class="btn btn-small btn-telegram">📋 Telegram</button>
-      `;
-      container.appendChild(exportDiv);
-      document.getElementById('exportOneObsidian')?.addEventListener('click', ()=>{
-        exportSingleToObsidian(data);
-        showToast('✅ Obsidian-файл сохранён в папку Загрузки');
-      });
-      document.getElementById('exportOneTelegram')?.addEventListener('click', ()=>{
-        copySingleToTelegram(data);
-        showToast('📋 Данные скопированы в буфер для Telegram');
-      });
+      if(addExportBtns){
+        const exportDiv = document.createElement('div');
+        exportDiv.className = 'flex-btns';
+        exportDiv.style.marginTop = '12px';
+        exportDiv.innerHTML = `
+          <button id="exportOneObsidian" class="btn btn-small btn-obsidian">📝 Obsidian (.md)</button>
+          <button id="exportOneTelegram" class="btn btn-small btn-telegram">📋 Telegram</button>
+        `;
+        container.appendChild(exportDiv);
+        document.getElementById('exportOneObsidian')?.addEventListener('click', ()=>{
+          exportSingleToObsidian(data);
+          showToast('✅ Obsidian-файл сохранён в папку Загрузки');
+        });
+        document.getElementById('exportOneTelegram')?.addEventListener('click', ()=>{
+          copySingleToTelegram(data);
+          showToast('📋 Данные скопированы в буфер для Telegram');
+        });
+      }
     }
 
     function exportSingleToObsidian(data){
@@ -496,77 +477,70 @@ ${Object.entries(data).map(([k,v])=> `- **${k}**: ${v}`).join('\n')}
       }
       if(data.распознанный_текст) msg += `\n📝 Текст:\`\`\`${data.распознанный_текст.substring(0,500)}\`\`\``;
       navigator.clipboard.writeText(msg);
-      showToast('Скопировано в буфер для Telegram');
     }
 
-    // ---------- МАССОВЫЙ OCR ----------
-    async function runBulk(processName, onComplete){
-      const images = allFiles.filter(f => ['jpg','jpeg','png','gif','bmp','webp'].includes(f.ext));
-      if(!images.length){ log('Нет изображений', true); return; }
+    // ------------------ СОРТИРОВКА ФАЙЛОВ ------------------
+    function showSorting(){
+      if(!allFiles.length) return;
+      const groups = new Map();
+      for(let f of allFiles){
+        let cat = '📄 Документы';
+        if(['jpg','jpeg','png','gif','webp','bmp','svg'].includes(f.ext)) cat = '🖼️ Изображения';
+        else if(['mp4','mkv','avi','mov','webm'].includes(f.ext)) cat = '🎬 Видео';
+        else if(['mp3','wav','flac','ogg','m4a'].includes(f.ext)) cat = '🎵 Аудио';
+        else if(['pdf','doc','docx','txt','md','rtf','xls','xlsx','ppt','pptx'].includes(f.ext)) cat = '📄 Документы';
+        else if(['zip','rar','7z','tar','gz'].includes(f.ext)) cat = '🗜️ Архивы';
+        else cat = '📁 Прочее';
+        if(!groups.has(cat)) groups.set(cat, []);
+        groups.get(cat).push(f.path);
+      }
+      let html = '';
+      for(let [cat, items] of groups){
+        html += `<div class="info-card" style="border-left-color:#7c3aed;">
+          <h4>${cat}</h4>
+          <ul style="margin-left:1rem; max-height:200px; overflow:auto;">${items.slice(0,30).map(i=>`<li style="font-size:0.7rem;">${i}</li>`).join('')}</ul>
+          ${items.length>30 ? `<div style="font-size:0.7rem;">... и ещё ${items.length-30}</div>` : ''}
+        </div>`;
+      }
+      resultContainer.innerHTML = html;
+    }
+
+    // ------------------ МАССОВОЕ ИЗВЛЕЧЕНИЕ ИЗ ВСЕХ ФАЙЛОВ В MD ------------------
+    async function runBulkAllFilesToMd(){
+      if(!allFiles.length){ log('Нет файлов', true); return; }
       abortFlag = false;
       bulkProgressDiv.style.display = 'block';
       bulkFill.style.width = '0%';
-      let results = [];
-      for(let i=0; i<images.length && !abortFlag; i++){
-        const percent = (i/images.length)*100;
+      let mdContent = `# Массовое извлечение из всех файлов\nДата: ${new Date().toLocaleString()}\nВсего файлов: ${allFiles.length}\n\n`;
+      for(let i=0; i<allFiles.length && !abortFlag; i++){
+        const percent = (i/allFiles.length)*100;
         bulkFill.style.width = `${percent}%`;
-        log(`Обработка ${i+1}/${images.length}: ${images[i].name}`);
+        const file = allFiles[i];
+        log(`Обработка ${i+1}/${allFiles.length}: ${file.name}`);
         try {
-          const data = await performOCR(images[i].fileObj, images[i].path);
-          data.путь = images[i].path;
-          results.push(data);
-        } catch(e){ log(`Ошибка ${images[i].name}: ${e.message}`, true); }
-        await new Promise(r => setTimeout(r, 20));
+          const extracted = await extractFromFile(file);
+          mdContent += `## ${i+1}. ${file.path}\n`;
+          for(let [k,v] of Object.entries(extracted)){
+            if(k !== 'распознанный_текст') mdContent += `- **${k}**: ${v}\n`;
+          }
+          if(extracted.распознанный_текст){
+            mdContent += `\n**Распознанный текст:**\n\`\`\`\n${extracted.распознанный_текст.substring(0,600)}\n\`\`\`\n`;
+          }
+          mdContent += '\n---\n\n';
+        } catch(e){
+          mdContent += `## ${i+1}. ${file.path}\n❌ Ошибка извлечения: ${e.message}\n\n---\n\n`;
+          log(`Ошибка ${file.name}: ${e.message}`, true);
+        }
+        await new Promise(r => setTimeout(r, 10));
       }
       bulkProgressDiv.style.display = 'none';
-      if(abortFlag) log('Массовый анализ остановлен');
-      onComplete(results);
-    }
-
-    function exportAllExcel(results){
-      if(!results.length) return;
-      const wsData = [['Путь','Номер','Сумма','Дата','Email','Телефон','QR','Текст']];
-      results.forEach(r=>{
-        wsData.push([
-          r.путь || '', r.номер_заказа || '', r.сумма || '', r.дата || '',
-          r.email || '', r.телефон || '', r.QR_код || '', (r.распознанный_текст||'').substring(0,300)
-        ]);
-      });
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.aoa_to_sheet(wsData);
-      XLSX.utils.book_append_sheet(wb, ws, 'Скриншоты');
-      XLSX.writeFile(wb, `sortscape_${Date.now()}.xlsx`);
-      showToast('Excel файл сохранён в Загрузки');
-    }
-
-    function exportAllObsidian(results){
-      let md = `# Массовое извлечение (${results.length} скриншотов)\n\n`;
-      results.forEach((r,idx)=>{
-        md += `## ${idx+1}. ${r.путь}\n`;
-        for(let [k,v] of Object.entries(r)){
-          if(k !== 'распознанный_текст') md += `- **${k}**: ${v}\n`;
-        }
-        if(r.распознанный_текст) md += `\n**Текст:**\n\`\`\`\n${r.распознанный_текст.substring(0,400)}\n\`\`\`\n`;
-        md += '\n---\n';
-      });
-      downloadFile(md, `obsidian_bulk_${Date.now()}.md`, 'text/markdown');
-      showToast('MD файл для Obsidian сохранён');
-    }
-
-    function exportAllTelegram(results){
-      let msg = `📸 *Сводка ${results.length} скриншотов*\n\n`;
-      results.forEach((r,i)=>{
-        msg += `${i+1}. ${r.путь}\n`;
-        if(r.номер_заказа) msg += `   🧾 Номер: ${r.номер_заказа}\n`;
-        if(r.сумма) msg += `   💰 Сумма: ${r.сумма}\n`;
-        if(r.дата) msg += `   📅 Дата: ${r.дата}\n`;
-        if(r.email) msg += `   ✉️ Email: ${r.email}\n`;
-        if(r.телефон) msg += `   📞 Телефон: ${r.телефон}\n`;
-        if(r.QR_код) msg += `   📲 QR: ${r.QR_код}\n`;
-        msg += '\n';
-      });
-      navigator.clipboard.writeText(msg);
-      showToast('Сводка скопирована для Telegram');
+      if(abortFlag){
+        log('Массовое извлечение остановлено');
+        mdContent += `\n\n**Операция прервана пользователем**\n`;
+      }
+      downloadFile(mdContent, `sortscape_all_files_${Date.now()}.md`, 'text/markdown');
+      showToast('MD-файл со всеми извлечениями сохранён в Загрузки');
+      resultContainer.innerHTML = `<div style="padding:1rem;">✅ Массовое извлечение завершено. Файл сохранён.</div>`;
     }
 
     function downloadFile(content, filename, mime){
@@ -580,26 +554,7 @@ ${Object.entries(data).map(([k,v])=> `- **${k}**: ${v}`).join('\n')}
 
     function escapeHtml(str){ return str.replace(/[&<>]/g, function(m){ if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
 
-    // сортировка по типам
-    function showSort(){
-      if(!allFiles.length) return;
-      const groups = new Map();
-      for(let f of allFiles){
-        let cat = '📄 Документы';
-        if(['jpg','jpeg','png','gif','webp'].includes(f.ext)) cat = '🖼️ Изображения';
-        else if(['mp4','mkv','avi','mov'].includes(f.ext)) cat = '🎬 Видео';
-        else if(['mp3','wav','flac'].includes(f.ext)) cat = '🎵 Аудио';
-        if(!groups.has(cat)) groups.set(cat, []);
-        groups.get(cat).push(f.path);
-      }
-      let html = '';
-      for(let [cat, items] of groups){
-        html += `<div class="result-group"><h4>${cat}</h4><ul>${items.slice(0,30).map(i=>`<li style="font-size:0.7rem;">${i}</li>`).join('')}</ul></div>`;
-      }
-      singleResultDiv.innerHTML = html;
-    }
-
-    // обработчики
+    // Обработчики
     selectFolderBtn.onclick = ()=>folderInput.click();
     folderInput.onchange = (e)=>{
       if(!e.target.files.length) return;
@@ -610,12 +565,11 @@ ${Object.entries(data).map(([k,v])=> `- **${k}**: ${v}`).join('\n')}
       renderFileList();
       previewDiv.innerHTML = '⬅️ Кликните на файл';
       singleResultDiv.innerHTML = '';
+      resultContainer.innerHTML = '<div style="padding:1rem;">Здесь появится сортировка или массовое извлечение</div>';
       extractBtnHolder.style.display = 'none';
     };
-    sortBtn.onclick = showSort;
-    extractAllExcel.onclick = ()=>runBulk('excel', exportAllExcel);
-    extractAllObsidian.onclick = ()=>runBulk('obsidian', exportAllObsidian);
-    extractAllTelegram.onclick = ()=>runBulk('telegram', exportAllTelegram);
+    sortBtn.onclick = showSorting;
+    extractAllMdBtn.onclick = ()=>{ runBulkAllFilesToMd(); };
     stopBulk.onclick = ()=>{ abortFlag = true; log('Остановка по запросу'); };
   })();
 </script>
